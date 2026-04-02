@@ -1,82 +1,63 @@
-# Import the Libraries
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import matplotlib.pyplot as plt
+import time
 
+st.title("Yahoo Finance Data App")
 
-# Set the page title and layout
-st.set_page_config(page_title="Stock Data Extraction App", layout="wide")
+ticker_symbol = st.text_input("Enter ticker symbol", "AAPL").upper()
 
-# Main title of the app
-st.title("Stock Data Extraction App")
+if ticker_symbol:
+    stock = yf.Ticker(ticker_symbol)
 
-# Short description under the title
-st.write("Extract stock market data from Yahoo Finance using a ticker symbol.")
+    # 1) Price data: usually the most important part
+    try:
+        hist = stock.history(period="1y")
+        if hist.empty:
+            st.warning("No historical price data found.")
+        else:
+            st.subheader("Historical Price Data")
+            st.dataframe(hist.tail())
+            st.line_chart(hist["Close"])
+    except Exception as e:
+        st.error(f"Could not fetch price history: {e}")
 
-# Sidebar header
-st.sidebar.header("User Input")
+    # 2) Lightweight summary data instead of stock.info
+    try:
+        fast = stock.fast_info
 
-# Input box for stock ticker
-ticker = st.sidebar.text_input("Enter Stock Ticker", "AAPL")
+        summary = {
+            "Last Price": fast.get("lastPrice"),
+            "Previous Close": fast.get("previousClose"),
+            "Open": fast.get("open"),
+            "Day High": fast.get("dayHigh"),
+            "Day Low": fast.get("dayLow"),
+            "Volume": fast.get("lastVolume"),
+            "Market Cap": fast.get("marketCap"),
+            "Currency": fast.get("currency"),
+        }
 
-# Input for start date
-start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2023-01-01"))
+        st.subheader("Stock Summary")
+        st.write(pd.DataFrame(summary.items(), columns=["Metric", "Value"]))
+    except Exception as e:
+        st.warning(f"Summary data temporarily unavailable: {e}")
 
-# Input for end date
-end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
-
-# Download data button
-if st.sidebar.button("Get Data"):
-    
-    # Create ticker object
-    stock = yf.Ticker(ticker)
-    
-    # Download historical price data
-    df = stock.history(start=start_date, end=end_date)
-     # Check if data exists
-    if df.empty:
-        st.error("No data found. Please check the ticker symbol or date range.")
-    else:
-        # Show success message
-        st.success(f"Data successfully extracted for {ticker}")
-
-        # Display company information
-        st.subheader("Company Information")
-        info = stock.info
-
-        company_name = info.get("longName", "N/A")
-        sector = info.get("sector", "N/A")
-        industry = info.get("industry", "N/A")
-        market_cap = info.get("marketCap", "N/A")
-        website = info.get("website", "N/A")
-
-        st.write(f"**Company Name:** {company_name}")
-        st.write(f"**Sector:** {sector}")
-        st.write(f"**Industry:** {industry}")
-        st.write(f"**Market Cap:** {market_cap}")
-        st.write(f"**Website:** {website}")
-
-        # Display stock data
-        st.subheader("Historical Stock Data")
-        st.dataframe(df)
-
-        # Plot closing price
-        st.subheader("Closing Price Chart")
-        fig, ax = plt.subplots()
-        ax.plot(df.index, df["Close"])
-        ax.set_xlabel("Date")
-        ax.set_ylabel("Closing Price")
-        ax.set_title(f"{ticker} Closing Price")
-        st.pyplot(fig)
-
-        # Convert dataframe to CSV for download
-        csv = df.to_csv().encode("utf-8")
-
-        # Download button for CSV
-        st.download_button(
-            label="Download Data as CSV",
-            data=csv,
-            file_name=f"{ticker}_stock_data.csv",
-            mime="text/csv"
-        )
+    # 3) Optional: only fetch full info if user asks
+    if st.checkbox("Show extended company info (may hit rate limit)"):
+        try:
+            time.sleep(2)  # small delay helps a bit
+            info = stock.info
+            st.subheader("Extended Company Info")
+            st.json({
+                "longName": info.get("longName"),
+                "sector": info.get("sector"),
+                "industry": info.get("industry"),
+                "country": info.get("country"),
+                "website": info.get("website"),
+                "longBusinessSummary": info.get("longBusinessSummary"),
+            })
+        except Exception as e:
+            st.error(
+                "Yahoo Finance rate-limited the extended info request. "
+                "Try again later or leave this box unchecked."
+            )
